@@ -86,8 +86,19 @@ def _command(name):
                 _log("%s: %s" % (name, unavailable))
                 # No service means no toast either, so this one has to be said locally.
                 _message_box(str(unavailable))
-            except Exception:
+            except Exception as failure:
+                # Say it, do not just write it down. A command that dies quietly is
+                # indistinguishable from one that did nothing, and that cost a long hunt:
+                # Reload closed nothing, called nothing and said nothing, and the log it
+                # would have gone to is itself unreliable inside the office. The user gets
+                # the kind of failure; the log keeps the traceback.
                 _log("%s: failed\n%s" % (name, traceback.format_exc()))
+                try:
+                    _say(_client(),
+                         "%s could not be completed: %s: %s"
+                         % (name, type(failure).__name__, failure), "error")
+                except Exception:
+                    _message_box("%s could not be completed: %s" % (name, failure))
         run.__name__ = function.__name__
         run.__doc__ = function.__doc__
         return run
@@ -188,6 +199,14 @@ def _open_with_values(context, client, answer, command):
     # a later save happening. The open document is written too, so a document already on screen
     # shows them without being reloaded.
     values = answer.get("attribute_mappings") or {}
+
+    # The staged file is named by part number, so it is very often the document already on screen -
+    # Revise is the ordinary case. The office locks what it has open, so the rewrite below cannot
+    # touch the file until it is closed. Its edits are saved first: the service has just taken a
+    # copy of this file for the revision, and losing what the user typed would be worse than the
+    # extra write.
+    doc.release(context, staged, save_first=True)
+
     try:
         opened = doc.open_staged(context, staged, values)
     except odf.RewriteError as trouble:
@@ -519,6 +538,13 @@ def reload_document(*_args):
     if doc.is_modified(document) and not _message_box(
             "This document has unsaved changes. Discard them and reload from PLM?", question=True):
         return
+
+    # Closed BEFORE the service is asked, not after. The service downloads the vault's copy over
+    # the staged path, and that path is this very document - an open document is locked, so the
+    # download fails and is reported as "could not be downloaded from the vault", which sounds
+    # like a vault fault and is not one. Word closes first for the same reason. The user has
+    # already agreed to lose any edits by this point.
+    doc.release(context, path)
 
     answer = client.reload_document(item_id)
     if not answer.get("success"):

@@ -101,6 +101,57 @@ def close_without_saving(document):
         pass
 
 
+def _same_file_key(path):
+    """One spelling for one file, so two names for it are recognised as the same.
+
+    Windows paths differ in case and in separator without being different files, and the two
+    spellings here come from different places: the service hands back a path, the office hands
+    back a URL. Comparing them as written made `release` quietly find nothing, which is exactly
+    the bug it exists to prevent - and a silent no-op is the worst possible failure for it.
+    """
+    return os.path.normcase(os.path.abspath(path))
+
+
+def component_for(context, path):
+    """The open document whose file is ``path``, or ``None``.
+
+    Matched on the file URL rather than the title: two revisions of one item share a title, and a
+    staged file is named by its part number, so the title does not identify a file.
+    """
+    try:
+        wanted = _same_file_key(path)
+        components = desktop(context).getComponents().createEnumeration()
+        while components.hasMoreElements():
+            component = components.nextElement()
+            url = getattr(component, "URL", None)
+            if url and _same_file_key(url_to_path(url)) == wanted:
+                return component
+    except Exception:
+        pass
+    return None
+
+
+def release(context, path, save_first=False):
+    """Closes whatever has ``path`` open, so the file can be written. Answers whether it closed one.
+
+    The office holds an exclusive lock on an open document, and the staged file a command is about
+    to replace is usually that very document - staging is named by part number, with no revision in
+    the name. Until it is closed, neither the service's download nor this add-in's own rewrite can
+    touch the file, and both fail in ways that point somewhere else entirely.
+
+    ``save_first`` is for the callers that must not lose the user's edits. A caller that has
+    already asked the user, or that is about to overwrite the file anyway, passes it as False.
+    """
+    component = component_for(context, path)
+    if component is None:
+        return False
+
+    if save_first and is_modified(component):
+        save(component)
+    close_without_saving(component)
+    return True
+
+
 def open_staged(context, path, values=None, prepare=True):
     """Opens a file the service staged, or brings it forward if it is already open.
 
