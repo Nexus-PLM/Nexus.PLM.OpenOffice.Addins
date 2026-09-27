@@ -90,7 +90,13 @@ def make_document(path, values=None):
     if os.path.splitext(path)[1].lower() in DOCUMENT_EXTENSIONS:
         document_type = DOCUMENT_MIME_TYPES.get(mime_type)
 
-    if document_type is None and not values:
+    # Either of these is reason enough on its own to rewrite: both make Apache OpenOffice warn
+    # about macros the document does not have. See _without_empty_scripts and _UI_CONFIG.
+    carries_empty_scripts = _has_empty_scripts(path)
+    carries_empty_ui_config = _has_empty_ui_config(path)
+
+    if (document_type is None and not values
+            and not carries_empty_scripts and not carries_empty_ui_config):
         return False
 
     folder = os.path.dirname(os.path.abspath(path))
@@ -103,14 +109,21 @@ def make_document(path, values=None):
             for entry in source.infolist():
                 if entry.filename == "mimetype":
                     continue
+                if carries_empty_ui_config and entry.filename.startswith(UI_CONFIG):
+                    continue          # dropped entirely; the manifest loses it below
 
                 content = source.read(entry.filename)
-                if entry.filename == MANIFEST and document_type is not None:
-                    content = _manifest_says(content, mime_type, document_type)
+                if entry.filename == MANIFEST:
+                    if document_type is not None:
+                        content = _manifest_says(content, mime_type, document_type)
+                    if carries_empty_ui_config:
+                        content = _manifest_without_ui_config(content)
                 elif entry.filename == META and values:
                     content = _meta_holds(content, values)
-                elif entry.filename == CONTENT and values:
-                    content = _content_holds(content, values)
+                elif entry.filename == CONTENT and (values or carries_empty_scripts):
+                    if values:
+                        content = _content_holds(content, values)
+                    content = _without_empty_scripts(content)
 
                 target.writestr(entry, content)
         shutil.move(temporary, path)
@@ -244,6 +257,78 @@ _PARAGRAPH = re.compile(r'<text:p\b(?P<attributes>[^>]*?)(?:/>|>(?P<inner>.*?)</
 
 #: One span, likewise.
 _SPAN = re.compile(r'<text:span\b(?P<attributes>[^>]*?)(?:/>|>.*?</text:span>)', re.DOTALL)
+
+
+#: An ``office:scripts`` element with nothing in it, in both the shapes a writer emits.
+#: Matched on BYTES, because that is what a zip entry is and what the rewrite passes around.
+_EMPTY_SCRIPTS = re.compile(br"<office:scripts\s*/>|<office:scripts\s*>\s*</office:scripts>")
+
+
+#: The document's own toolbar and menu customisation. A real one can bind a command to a macro,
+#: which is why Apache OpenOffice treats the mere presence of this folder as macro content.
+UI_CONFIG = "Configurations2"
+
+#: Its manifest declaration, and the declaration of anything inside it.
+_UI_CONFIG_ENTRY = re.compile(
+    br'\s*<manifest:file-entry[^>]*manifest:full-path="' + UI_CONFIG.encode("ascii") +
+    br'[^"]*"[^>]*/>')
+
+
+def _has_empty_ui_config(path):
+    """Whether the package carries a ``Configurations2`` folder that customises nothing.
+
+    LibreOffice puts the folder into everything it saves - accelerator, menubar, toolbar,
+    popupmenu, statusbar, toolpanel - and in a document nobody has customised every one of them is
+    empty. Apache OpenOffice does not look inside: the folder is declared in the manifest as
+    ``application/vnd.sun.xml.ui.configuration``, a UI configuration can bind a control to a macro,
+    and so the document "contains macros". Measured on AOO 4.1.16 against a staged .odt whose only
+    Configurations2 content was empty folders and a zero-byte accelerator/current.xml.
+
+    Only an EMPTY one is removed. A document somebody has really customised keeps its toolbars,
+    and keeps the warning, which is then telling the truth.
+    """
+    try:
+        with zipfile.ZipFile(path) as package:
+            entries = [e for e in package.infolist() if e.filename.startswith(UI_CONFIG)]
+            if not entries:
+                return False
+            return all(e.filename.endswith("/") or e.file_size == 0 for e in entries)
+    except Exception:
+        return False
+
+
+def _manifest_without_ui_config(manifest):
+    """The manifest with every ``Configurations2`` declaration struck out.
+
+    A manifest that still names a part the package no longer holds is a damaged package, and the
+    office says so across the title bar - the same "(repaired document)" the mimetype rule avoids.
+    """
+    return _UI_CONFIG_ENTRY.sub(b"", manifest)
+
+
+def _has_empty_scripts(path):
+    """Whether the package carries an ``office:scripts`` element with no macros in it."""
+    try:
+        with zipfile.ZipFile(path) as package:
+            return bool(_EMPTY_SCRIPTS.search(package.read(CONTENT)))
+    except Exception:
+        return False
+
+
+def _without_empty_scripts(content):
+    """Drops an ``office:scripts`` element that holds nothing.
+
+    Apache OpenOffice warns "This document contains macros. Macros may contain viruses." on the
+    mere PRESENCE of the element, empty or not, and then says some functionality may not be
+    available. LibreOffice writes the empty element into every document it saves, so a template
+    authored in LibreOffice carries it and so does every document PLM stages from that template -
+    and the user is accused of macros on a file that has none. Measured on Apache OpenOffice
+    4.1.16 against a staged .odt whose only script content was ``<office:scripts/>``.
+
+    Only the EMPTY form is removed. A document with real macros keeps them, and keeps the warning,
+    which is the warning doing its job.
+    """
+    return _EMPTY_SCRIPTS.sub(b"", content)
 
 
 def _content_holds(content, values):
