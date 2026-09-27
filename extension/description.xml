@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/extensions/description/2006"
+             xmlns:d="http://openoffice.org/extensions/description/2006"
+             xmlns:xlink="http://www.w3.org/1999/xlink">
+
+  <identifier value="com.nexusplm.openoffice"/>
+  <version value="0.1.0"/>
+
+  <display-name>
+    <name lang="en-GB">NexusPLM</name>
+    <name lang="en-US">NexusPLM</name>
+  </display-name>
+
+  <extension-description>
+    <src xlink:href="description/summary.txt" lang="en-GB"/>
+  </extension-description>
+
+  <publisher>
+    <name xlink:href="https://github.com/Nexus-PLM" lang="en-GB">Nexus PLM</name>
+  </publisher>
+
+  <icon>
+    <default xlink:href="icons/nexus-42.png"/>
+  </icon>
+
+  <!--
+    OpenOffice.org-minimal-version, and NOT LibreOffice's `lo:LibreOffice-minimal-version`. This is
+    the mirror image of the trap the LibreOffice add-in documents: that element lives in
+    LibreOffice's own namespace, Apache OpenOffice has never heard of it, and a package whose only
+    declared dependency is one the office does not recognise is refused outright with "unsatisfied
+    dependencies" and no word about which. 4.1 is the line because that is the release that brought
+    the sidebar and the Python 2.7 the extension runs on.
+  -->
+  <dependencies>
+    <OpenOffice.org-minimal-version value="4.1" d:name="Apache OpenOffice 4.1"/>
+  </dependencies>
+
+  <!-- No platform element: the extension is pure Python and the service it talks to is reached
+       over HTTP on the loopback interface, so nothing here is architecture-specific. That is the
+       practical advantage over the .NET/CLI UNO bridge, which is Windows-only and needs the
+       extension's bitness to match the office installation's. -->
+
+</description>

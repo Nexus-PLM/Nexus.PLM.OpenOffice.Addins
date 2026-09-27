@@ -1,0 +1,171 @@
+# -*- coding: utf-8 -*-
+"""The shipped Python must run on Python 2.7, because that is what Apache OpenOffice bundles.
+
+This is the constraint that makes this repo different from every other one in the estate, and it
+is invisible: modern Python is a syntax error inside OpenOffice, and the failure arrives as an
+extension that installs cleanly and then does nothing — no toolbar, no menu, nothing logged where
+anyone looks. So it is held here rather than discovered there.
+
+**Measured** (Apache OpenOffice 4.1.16, its own `program\\python.exe`): Python **2.7.18**, 32-bit.
+Three things had to change when the LibreOffice add-in was ported, and those three are what these
+tests hold:
+
+  1. an encoding declaration on every file — they all carry non-ASCII, and Python 2 refuses a
+     source file with no ``coding:`` line, at import, with a SyntaxError naming a line that looks
+     innocent;
+  2. ``urllib.request``/``urllib.error``/``urllib.parse`` are Python 3 spellings — Python 2 has
+     ``urllib2`` and ``urllib``;
+  3. ``raise X(...) from error`` is Python 3 syntax.
+
+The textual checks run everywhere, including CI, where no Python 2 exists. The real import check
+runs only where OpenOffice is installed and **skips** otherwise — a green tick for an assurance
+nobody has is worse than no test, which is the rule the .NET round-trip test already follows.
+
+    python -m unittest discover -s tests/python
+"""
+
+import io
+import os
+import re
+import subprocess
+import unittest
+
+ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
+SHIPPED = os.path.join(ROOT, "extension", "python")
+
+#: Where Apache OpenOffice keeps the Python it runs extensions with, when it is installed.
+OPENOFFICE_PYTHONS = (
+    r"C:\Program Files (x86)\OpenOffice 4\program\python.exe",
+    r"C:\Program Files\OpenOffice 4\program\python.exe",
+)
+
+
+def shipped_files():
+    """Every .py this extension actually ships — the ones OpenOffice will import."""
+    found = []
+    for folder, _dirs, files in os.walk(SHIPPED):
+        for name in sorted(files):
+            if name.endswith(".py"):
+                found.append(os.path.join(folder, name))
+    return found
+
+
+def read(path):
+    with io.open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def without_strings_and_comments(source):
+    """Source with string literals and comments blanked, so a rule about CODE is not tripped by
+    a docstring that happens to describe the thing being forbidden — these very files do."""
+    source = re.sub(r'"""".*?"""|\'\'\'.*?\'\'\'', '""', source, flags=re.DOTALL)
+    source = re.sub(r'""".*?"""', '""', source, flags=re.DOTALL)
+    source = re.sub(r"'''.*?'''", "''", source, flags=re.DOTALL)
+    source = re.sub(r"#[^\n]*", "", source)
+    return source
+
+
+class EveryShippedFileDeclaresItsEncoding(unittest.TestCase):
+    def test_all_of_them(self):
+        # PEP 263: the declaration must be on line 1, or line 2 after a shebang. Anywhere else and
+        # Python 2 does not see it.
+        missing = []
+        for path in shipped_files():
+            head = read(path).split("\n")[:2]
+            if not any(re.search(r"coding[:=]\s*([-\w.]+)", line) for line in head):
+                missing.append(os.path.basename(path))
+        self.assertEqual(
+            [], missing,
+            "Python 2 refuses a file with non-ASCII and no encoding line, at import")
+
+    def test_there_are_files_to_check(self):
+        # The walk finding nothing would make every test above pass while proving nothing.
+        self.assertGreater(len(shipped_files()), 5)
+
+
+class NoPython3OnlySyntax(unittest.TestCase):
+    """Each of these is a SyntaxError inside OpenOffice, so none may reach the shipped code."""
+
+    def offenders(self, pattern, why):
+        bad = []
+        for path in shipped_files():
+            code = without_strings_and_comments(read(path))
+            for number, line in enumerate(code.split("\n"), start=1):
+                if re.search(pattern, line):
+                    bad.append("%s:%d" % (os.path.basename(path), number))
+        self.assertEqual([], bad, why)
+
+    def test_no_f_strings(self):
+        self.offenders(r"""\bf["']""", "an f-string is a SyntaxError on Python 2.7")
+
+    def test_no_exception_chaining(self):
+        self.offenders(r"\braise\b.*\bfrom\b|^\s*\)\s+from\s+\w+",
+                       "`raise ... from` is Python 3 only; Python 2 has no chaining")
+
+    def test_no_walrus(self):
+        self.offenders(r"[^:=!<>]:=[^=]", "the walrus operator is Python 3.8+")
+
+    def test_no_nonlocal(self):
+        self.offenders(r"^\s*nonlocal\b", "`nonlocal` is Python 3 only")
+
+    def test_no_annotated_signatures(self):
+        self.offenders(r"^\s*def \w+\([^)]*\)\s*->", "return annotations are Python 3 only")
+
+    def test_no_yield_from(self):
+        self.offenders(r"\byield\s+from\b", "`yield from` is Python 3 only")
+
+
+class TheUrllibImportsWorkOnBoth(unittest.TestCase):
+    """`client.py` is the one module that talks HTTP, so it is the one that had to be shimmed."""
+
+    def setUp(self):
+        self.source = read(os.path.join(SHIPPED, "pythonpath", "nexusplm", "client.py"))
+
+    def test_it_tries_python3_first_then_falls_back(self):
+        self.assertIn("import urllib.request as _urlrequest", self.source)
+        self.assertIn("except ImportError:", self.source)
+        self.assertIn("import urllib2 as _urlrequest", self.source)
+
+    def test_nothing_reaches_for_the_python3_names_directly(self):
+        # A single `urllib.request.urlopen` left behind fails only when the call is made, which is
+        # the first time a user presses a button - not at import, where it would be noticed.
+        code = without_strings_and_comments(self.source)
+        for spelling in ("urllib.request.", "urllib.error.", "urllib.parse."):
+            self.assertNotIn(spelling, code,
+                             "use the shimmed _urlrequest/_urlerror/_urlparse names")
+
+
+class OpenOfficesOwnPythonCanImportIt(unittest.TestCase):
+    """The real check, where OpenOffice is installed: its interpreter imports every module.
+
+    Skipped rather than failed where it is not, because CI has no Apache OpenOffice and a test
+    that cannot run must not look like one that passed.
+    """
+
+    def setUp(self):
+        self.python = next((p for p in OPENOFFICE_PYTHONS if os.path.exists(p)), None)
+        if self.python is None:
+            self.skipTest("Apache OpenOffice is not installed on this machine")
+
+    def test_every_module_imports(self):
+        pythonpath = os.path.abspath(os.path.join(SHIPPED, "pythonpath"))
+        failures = []
+        # document.py and the UNO-facing modules need a running office, so only the ones that do
+        # not import `uno` are checked here. They are the ones carrying the logic.
+        for module in ("odf", "navigator", "panel", "state", "identity", "client"):
+            script = (
+                "import sys\n"
+                "sys.path.insert(0, r'%s')\n"
+                "sys.dont_write_bytecode = True\n"
+                "__import__('nexusplm.%s')\n" % (pythonpath, module)
+            )
+            done = subprocess.Popen([self.python, "-c", script],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            _out, err = done.communicate()
+            if done.returncode != 0:
+                failures.append("%s: %s" % (module, err.decode("utf-8", "replace").strip()[-160:]))
+        self.assertEqual([], failures)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The manifest lives in META-INF/, not at the root of the package. A manifest.xml sitting beside
+  description.xml is simply never read: the extension installs, reports success, and none of its
+  toolbars or scripts appear. Every extension LibreOffice itself ships puts it here.
+-->
+<manifest:manifest xmlns:manifest="http://openoffice.org/2001/manifest">
+
+  <!-- The toolbar and the Nexus PLM menu. -->
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="Addons.xcu"/>
+
+  <!-- Names the toolbar and shows it docked by default, per application. -->
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="WriterWindowState.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="CalcWindowState.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="ImpressWindowState.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="DrawWindowState.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="MathWindowState.xcu"/>
+
+  <!-- The stacked toolbar buttons: a popup-menu controller component, and the bindings that
+       make LibreOffice build a dropdown for each command it is registered against. -->
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-component;type=Python"
+                       manifest:full-path="python/nexusplm_controllers.py"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="Controller.xcu"/>
+
+  <!-- The sidebar deck: the deck and its panel, the factory that builds the panel, and the
+       component that factory is. All three are needed — a deck with no registered factory opens
+       empty and LibreOffice reports nothing, because as far as it knows nobody claimed the
+       resource the panel names. -->
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="Sidebar.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data"
+                       manifest:full-path="Factories.xcu"/>
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-component;type=Python"
+                       manifest:full-path="python/nexusplm_sidebar.py"/>
+
+  <!-- The commands themselves. Registering the folder — not each file — is what makes
+       "vnd.sun.star.script:...?language=Python&amp;location=user:uno_packages" resolve to it. -->
+  <manifest:file-entry manifest:media-type="application/vnd.sun.star.framework-script"
+                       manifest:full-path="python/"/>
+
+</manifest:manifest>

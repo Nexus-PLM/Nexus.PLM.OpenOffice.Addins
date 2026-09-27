@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+.vs/
+installer/payload/
+installer/Output/
+publish/
+nupkg/
+dist/
+__pycache__/
