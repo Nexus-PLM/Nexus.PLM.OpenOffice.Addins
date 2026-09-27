@@ -14,6 +14,7 @@ Every function catches everything. An exception escaping into UNO is reported to
 unhelpful scripting error, and in the worst case takes the frame down with it.
 """
 
+import io
 import os
 import traceback
 import webbrowser
@@ -22,6 +23,7 @@ import webbrowser
 # LibreOffice convention: the script provider adds it to sys.path before running anything here.
 # It is the only way to find the package, because the provider exec()s this module and sets
 # ``__file__`` only afterwards — at import time the name does not exist at all.
+from nexusplm import _compat
 from nexusplm import document as doc
 from nexusplm import identity
 from nexusplm import odf
@@ -30,7 +32,7 @@ from nexusplm.client import Client, ServiceUnavailable
 
 _LOG = os.path.join(
     os.environ.get("APPDATA") or os.path.expanduser("~"),
-    "NexusPLM", "Logs", "plmlibreofficeaddin.log")
+    "NexusPLM", "Logs", "plmopenofficeaddin.log")
 
 HELP_URL = "https://github.com/Nexus-PLM"
 
@@ -41,8 +43,8 @@ def _log(message):
     Best effort: a command must not fail because a log file could not be written.
     """
     try:
-        os.makedirs(os.path.dirname(_LOG), exist_ok=True)
-        with open(_LOG, "a", encoding="utf-8") as handle:
+        _compat.makedirs(os.path.dirname(_LOG))
+        with io.open(_LOG, "a", encoding="utf-8") as handle:
             handle.write(message.rstrip() + "\n")
     except Exception:
         pass

@@ -18,12 +18,15 @@ status is always asked of the service with it.
 """
 
 import json
+import io
 import os
+
+from nexusplm import _compat
 import tempfile
 
 #: Where the map lives. Beside the add-in's log, under the user's roaming profile.
 _FOLDER = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "NexusPLM")
-_PATH = os.path.join(_FOLDER, "libreoffice-documents.json")
+_PATH = os.path.join(_FOLDER, "openoffice-documents.json")
 
 
 def _key(path):
@@ -33,7 +36,7 @@ def _key(path):
 
 def _read():
     try:
-        with open(_PATH, encoding="utf-8") as handle:
+        with io.open(_PATH, encoding="utf-8") as handle:
             loaded = json.load(handle)
         return loaded if isinstance(loaded, dict) else {}
     except Exception:
@@ -44,11 +47,11 @@ def _read():
 
 def _write(everything):
     try:
-        os.makedirs(_FOLDER, exist_ok=True)
+        _compat.makedirs(_FOLDER)
         handle, temporary = tempfile.mkstemp(dir=_FOLDER, suffix=".tmp")
-        with os.fdopen(handle, "w", encoding="utf-8") as out:
-            json.dump(everything, out, indent=1)
-        os.replace(temporary, _PATH)   # atomic: readers see the old map or the new one
+        with io.open(handle, "w", encoding="utf-8") as out:
+            _compat.write_json(out, everything, indent=1)
+        _compat.replace(temporary, _PATH)   # atomic: readers see the old map or the new one
         return True
     except Exception:
         try:

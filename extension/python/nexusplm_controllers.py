@@ -18,6 +18,7 @@ Choosing an entry dispatches the same ``vnd.sun.star.script:`` URL the flat tool
 use, through the frame, so a command behaves identically wherever it was reached from.
 """
 
+import io
 import os
 import traceback
 
@@ -83,13 +84,13 @@ STACKS = {
 }
 
 _LOG = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"),
-                    "NexusPLM", "Logs", "plmlibreofficeaddin.log")
+                    "NexusPLM", "Logs", "plmopenofficeaddin.log")
 
 
 def _log(message):
     try:
-        os.makedirs(os.path.dirname(_LOG), exist_ok=True)
-        with open(_LOG, "a", encoding="utf-8") as handle:
+        _compat.makedirs(os.path.dirname(_LOG))
+        with io.open(_LOG, "a", encoding="utf-8") as handle:
             handle.write("controller: " + message.rstrip() + "\n")
     except Exception:
         pass
