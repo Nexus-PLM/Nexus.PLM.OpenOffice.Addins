@@ -25,11 +25,20 @@ import traceback
 import uno
 import unohelper
 from com.sun.star.awt import XActionListener, XWindowListener, Rectangle, Size
-from com.sun.star.util import MeasureUnit
 from com.sun.star.lang import XServiceInfo
 from com.sun.star.ui import XUIElement, XUIElementFactory
 from com.sun.star.ui.UIElementType import TOOLPANEL
 from com.sun.star.awt.tree import XTreeExpansionListener
+
+#: The appfont measure, read from the office rather than imported from it.
+#:
+#: ``from com.sun.star.util import MeasureUnit`` is how LibreOffice's pyuno exposes a constants
+#: group, and Apache OpenOffice 4.1's pyuno cannot do it: the import raises
+#: ``ImportError: type com.sun.star.util.MeasureUnit is unknown`` and takes the whole component
+#: down with it, so the panel is never registered and the sidebar deck opens empty with nothing
+#: logged. The constant itself is there - ``getConstantByName`` answers 17 - and that call is
+#: plain pyuno which both offices have had for ever. Measured on Apache OpenOffice 4.1.16.
+_APPFONT = uno.getConstantByName("com.sun.star.util.MeasureUnit.APPFONT")
 
 from nexusplm import identity
 from nexusplm import navigator as navigator_rules
@@ -189,7 +198,7 @@ class Panel(unohelper.Base, XUIElement, XWindowListener, XActionListener,
         try:
             probe = Size()
             probe.Width = probe.Height = 100
-            pixels = container.convertSizeToPixel(probe, MeasureUnit.APPFONT)
+            pixels = container.convertSizeToPixel(probe, _APPFONT)
             if pixels.Width > 0 and pixels.Height > 0:
                 self._sx = pixels.Width / 100.0
                 self._sy = pixels.Height / 100.0
