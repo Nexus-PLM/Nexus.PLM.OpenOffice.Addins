@@ -157,6 +157,74 @@ class TheUrllibDifferencesLiveInOnePlace(unittest.TestCase):
         self.assertEqual([], offenders, "go through nexusplm._compat instead")
 
 
+class NoPython3OnlyStandardLibrary(unittest.TestCase):
+    """Calls that exist only on Python 3, and that fail in SILENCE here.
+
+    Every one of these sits inside a bare ``except`` in this code base, so on Python 2.7 it raises,
+    is swallowed, and the feature simply stops. They were all found by driving the add-in inside
+    Apache OpenOffice, not by any test:
+
+      * the three ``_log`` helpers stopped writing, so a command that plainly ran and raised a
+        toast left no trace in any log;
+      * ``state.py`` could neither read nor write the document-to-item map, which is what every
+        item-scoped command keys off - so each of them would have refused with
+        "This document is not registered in PLM";
+      * ``os.replace`` is the nastiest of them: 2.7 has only ``os.rename``, which on Windows fails
+        when the destination exists, so the FIRST save would have worked and every later one
+        silently not.
+    """
+
+    def offending(self, pattern, why):
+        bad = []
+        for path in shipped_files():
+            if os.path.basename(path) == "_compat.py":
+                continue          # _compat is the one place allowed to know the difference
+            code = without_strings_and_comments(read(path))
+            for number, line in enumerate(code.splitlines(), start=1):
+                if re.search(pattern, line):
+                    bad.append("%s:%d" % (os.path.basename(path), number))
+        self.assertEqual([], bad, why)
+
+    def test_no_exist_ok(self):
+        self.offending(r"exist_ok\s*=",
+                       "os.makedirs has no exist_ok on 2.7 - use _compat.makedirs")
+
+    def test_no_builtin_open_with_encoding(self):
+        # io.open is the same function as Python 3's open and exists on 2.7.
+        self.offending(r"(?<![.\w])open\([^)]*encoding\s*=",
+                       "the builtin open has no encoding on 2.7 - use io.open")
+
+    def test_no_os_replace(self):
+        self.offending(r"os\.replace\(",
+                       "os.replace arrived in 3.3 - use _compat.replace")
+
+    def test_no_json_dump_into_a_text_stream(self):
+        # json.dump writes str on 2.7, and an io.open text stream accepts only unicode.
+        self.offending(r"json\.dump\(",
+                       "json.dump into a text stream is a TypeError on 2.7 - use _compat.write_json")
+
+    def test_compat_provides_all_of_them(self):
+        compat = read(os.path.join(SHIPPED, "pythonpath", "nexusplm", "_compat.py"))
+        for name in ("def makedirs(", "def replace(", "def write_json("):
+            self.assertIn(name, compat)
+
+
+class ItLogsAndRemembersUnderItsOwnName(unittest.TestCase):
+    """The copy left both pointing at LibreOffice's files, so the two hosts would have shared
+    them: one log interleaving two applications, and one document map each could overwrite."""
+
+    def test_the_log_is_this_hosts_own(self):
+        for name in ("nexus_commands.py", "nexusplm_controllers.py", "nexusplm_sidebar.py"):
+            source = read(os.path.join(SHIPPED, name))
+            self.assertIn("plmopenofficeaddin.log", source, name)
+            self.assertNotIn("plmlibreofficeaddin.log", source, name)
+
+    def test_the_document_map_is_this_hosts_own(self):
+        source = read(os.path.join(SHIPPED, "pythonpath", "nexusplm", "state.py"))
+        self.assertIn("openoffice-documents.json", source)
+        self.assertNotIn("libreoffice-documents.json", source)
+
+
 class TheHostSaysWhatItIs(unittest.TestCase):
     def test_it_calls_itself_openoffice(self):
         # The host name is declared, not inferred: it names the host in the New dialog's template
