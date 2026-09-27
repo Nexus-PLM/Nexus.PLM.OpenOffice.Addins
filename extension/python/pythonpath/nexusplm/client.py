@@ -13,24 +13,12 @@ it, so ``requests`` is not available and must not be assumed — ``urllib`` is.
 """
 
 import json
-try:
-    # Python 3 - what LibreOffice bundles. Kept working so one file serves both, and so a
-    # developer can exercise this module with the system Python.
-    import urllib.error as _urlerror
-    import urllib.parse as _urlparse
-    import urllib.request as _urlrequest
-except ImportError:
-    # Python 2.7 - what Apache OpenOffice 4.1 bundles, and what this add-in actually runs on.
-    # urllib2 carries the opener, the Request and both error classes; the quoting helpers stay
-    # in urllib. Measured against OpenOffice 4.1.16's own python.exe (2.7.18, 32-bit).
-    import urllib as _urlparse
-    import urllib2 as _urlrequest
-    import urllib2 as _urlerror
+from nexusplm import _compat
 
 DEFAULT_BASE_URL = "http://localhost:5100"
 
 #: What this host is called, in the New dialog's template chip and in the service's log.
-HOST_NAME = "LibreOffice"
+HOST_NAME = "OpenOffice"
 
 #: The base type the New, Search and Save As dialogs are limited to. Documents, not parts.
 ROOT_BASE_TYPE = "DocumentsBase"
@@ -66,21 +54,21 @@ class Client:
         url = self.base_url + path
         data = json.dumps(body).encode("utf-8") if body is not None else None
 
-        request = _urlrequest.Request(url, data=data, method=method)
+        request = _compat.make_request(url, data=data, method=method)
         request.add_header("Content-Type", "application/json")
 
         try:
-            with _urlrequest.urlopen(request, timeout=timeout) as response:
+            with _compat.urlopen(request, timeout=timeout) as response:
                 raw = response.read().decode("utf-8")
                 return json.loads(raw) if raw.strip() else {}
-        except _urlerror.HTTPError as error:
+        except _compat.HTTPError as error:
             # The service answers its own failures in the body; a status alone is not the story.
             try:
                 return json.loads(error.read().decode("utf-8"))
             except Exception:
                 return {"success": False,
                         "error": "The service refused the request (HTTP %d)." % error.code}
-        except _urlerror.URLError as error:
+        except _compat.URLError as error:
             raise ServiceUnavailable(
                 "Nexus PLM is not running. Start the Nexus PLM Addins tray application."
             )
@@ -88,7 +76,7 @@ class Client:
     def _get(self, path, timeout=QUICK_TIMEOUT, **query):
         clean = {k: v for k, v in query.items() if v is not None}
         if clean:
-            path = path + "?" + _urlparse.urlencode(clean)
+            path = path + "?" + _compat.urlencode(clean)
         return self._call("GET", path, timeout=timeout)
 
     def _post(self, path, body, timeout=QUICK_TIMEOUT):
@@ -270,7 +258,7 @@ class Client:
 
     def folder_items(self, folder_id):
         """What is in one folder: ``{"success", "items": [...]}``."""
-        return self._get("/plm/navigation/folders/%s/items" % _urlparse.quote(str(folder_id)),
+        return self._get("/plm/navigation/folders/%s/items" % _compat.quote(str(folder_id)),
                          timeout=DIALOG_TIMEOUT)
 
     def lookup(self, query):

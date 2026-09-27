@@ -7,8 +7,8 @@ an office at all.
 """
 
 import os
-import urllib.parse
 
+from nexusplm import _compat
 from nexusplm import odf
 
 #: What this host can open, for the service's browser to filter by. A host declares its own
@@ -49,11 +49,11 @@ def path_of(document):
 
 def url_to_path(url):
     """``file:///C:/Nexus/Staging/EM-1.odt`` to ``C:\\Nexus\\Staging\\EM-1.odt``."""
-    parsed = urllib.parse.urlparse(url)
+    parsed = _compat.urlparse(url)
     if parsed.scheme != "file":
         return None
 
-    path = urllib.parse.unquote(parsed.path)
+    path = _compat.unquote(parsed.path)
     # A Windows path arrives as "/C:/..."; drop the leading slash and use native separators.
     if len(path) > 2 and path[0] == "/" and path[2] == ":":
         path = path[1:]
@@ -69,7 +69,7 @@ def path_to_url(path):
     "type detection failed" — because it never gets as far as looking at the file. Measured against
     LibreOffice 26.2: the same file at ``file:///C:/...`` opens.
     """
-    return "file:///" + urllib.parse.quote(
+    return "file:///" + _compat.quote(
         os.path.abspath(path).replace("\\", "/"), safe=":/")
 
 
