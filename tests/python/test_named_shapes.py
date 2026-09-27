@@ -15,6 +15,7 @@ silence, which looked exactly like a template whose fields did not match.
 
 import io
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -462,3 +463,101 @@ class AnEmptyScriptsElementIsDropped(unittest.TestCase):
     def test_a_document_with_no_scripts_element_is_not_rewritten_for_nothing(self):
         path = self.staged("")
         self.assertFalse(odf.make_document(path))
+
+
+class AnEmptyUiConfigurationIsDropped(unittest.TestCase):
+    """The other half of "this document contains macros", and the half that actually bit.
+
+    Stripping the empty ``office:scripts`` was not enough: the warning came back on a document
+    whose content.xml had none. LibreOffice also writes a ``Configurations2`` folder into
+    everything it saves — accelerator, menubar, toolbar, popupmenu, statusbar, toolpanel — and in
+    a document nobody has customised every one of them is empty. Apache OpenOffice does not look
+    inside. The folder is declared in the manifest as
+    ``application/vnd.sun.xml.ui.configuration``; a UI configuration can bind a control to a macro;
+    so the document "contains macros".
+
+    Measured on AOO 4.1.16, and it matters more than it sounds: the warning is MODAL, and while it
+    is up it swallows every click aimed at the toolbar behind it — which is what made the toolbar
+    look dead.
+    """
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp(prefix="nexus-uicfg-")
+
+    def staged(self, config_entries, name="LTD-1.odt"):
+        """A document carrying the given Configurations2 entries, declared in its manifest."""
+        path = os.path.join(self.folder, name)
+        declared = "".join(
+            '<manifest:file-entry manifest:media-type="%s" manifest:full-path="%s"/>'
+            % ("application/vnd.sun.xml.ui.configuration" if n.endswith("/") else "", n)
+            for n, _ in config_entries)
+        manifest = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">'
+            '<manifest:file-entry manifest:full-path="/" '
+            'manifest:media-type="application/vnd.oasis.opendocument.text"/>'
+            + declared +
+            '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>'
+            '</manifest:manifest>')
+        with zipfile.ZipFile(path, "w") as out:
+            stored = zipfile.ZipInfo("mimetype")
+            stored.compress_type = zipfile.ZIP_STORED
+            out.writestr(stored, "application/vnd.oasis.opendocument.text")
+            out.writestr("META-INF/manifest.xml", manifest)
+            out.writestr("meta.xml", META)
+            out.writestr("content.xml",
+                         '<?xml version="1.0" encoding="UTF-8"?>'
+                         '<office:document-content '
+                         'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">'
+                         '<office:body><office:text/></office:body></office:document-content>')
+            for n, body in config_entries:
+                out.writestr(n, body)
+        return path
+
+    def names_of(self, path):
+        with zipfile.ZipFile(path) as package:
+            return package.namelist()
+
+    def manifest_of(self, path):
+        with zipfile.ZipFile(path) as package:
+            return package.read("META-INF/manifest.xml").decode("utf-8")
+
+    EMPTY = [("Configurations2/", ""),
+             ("Configurations2/toolbar/", ""),
+             ("Configurations2/accelerator/current.xml", "")]
+
+    def test_an_empty_one_is_removed_entirely(self):
+        path = self.staged(self.EMPTY)
+        self.assertTrue(odf.make_document(path))
+        self.assertFalse([n for n in self.names_of(path) if n.startswith("Configurations2")])
+
+    def test_the_manifest_stops_naming_it(self):
+        # A manifest that names a part the package no longer holds is a damaged package, and the
+        # office says so across the title bar.
+        path = self.staged(self.EMPTY)
+        odf.make_document(path)
+        self.assertNotIn("Configurations2", self.manifest_of(path))
+
+    def test_nothing_is_declared_that_the_package_does_not_hold(self):
+        path = self.staged(self.EMPTY)
+        odf.make_document(path)
+        declared = set(re.findall(r'full-path="([^"]*)"', self.manifest_of(path))) - {"/"}
+        held = set(self.names_of(path)) - {"mimetype"}
+        # The manifest never declares itself, by the ODF specification.
+        self.assertEqual(set(), declared - held - {"META-INF/manifest.xml"})
+
+    def test_it_is_dropped_even_when_there_is_nothing_else_to_do(self):
+        path = self.staged(self.EMPTY)
+        self.assertTrue(odf.make_document(path),
+                        "an empty UI configuration is reason enough to rewrite")
+
+    def test_a_real_customisation_is_kept_and_so_is_the_warning(self):
+        # Somebody's actual toolbar. Nothing here may quietly throw that away.
+        real = [("Configurations2/", ""),
+                ("Configurations2/toolbar/custom.xml", "<toolbar><item/></toolbar>")]
+        path = self.staged(real)
+        odf.make_document(path, {"PartNumber": "LTD-1"})
+        self.assertIn("Configurations2/toolbar/custom.xml", self.names_of(path))
+
+    def test_a_document_without_one_is_not_rewritten_for_nothing(self):
+        self.assertFalse(odf.make_document(self.staged([])))
