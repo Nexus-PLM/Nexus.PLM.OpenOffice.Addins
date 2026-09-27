@@ -23,6 +23,8 @@ import os
 import traceback
 
 import uno
+
+from nexusplm import _compat
 import unohelper
 from com.sun.star.awt import XMenuListener, Rectangle
 from com.sun.star.beans import PropertyValue
@@ -91,7 +93,7 @@ def _log(message):
     try:
         _compat.makedirs(os.path.dirname(_LOG))
         with io.open(_LOG, "a", encoding="utf-8") as handle:
-            handle.write("controller: " + message.rstrip() + "\n")
+            handle.write(u"controller: " + _compat.as_text(message).rstrip() + u"\n")
     except Exception:
         pass
 
