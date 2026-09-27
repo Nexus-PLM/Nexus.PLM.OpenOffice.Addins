@@ -90,7 +90,10 @@ def make_document(path, values=None):
     if os.path.splitext(path)[1].lower() in DOCUMENT_EXTENSIONS:
         document_type = DOCUMENT_MIME_TYPES.get(mime_type)
 
-    if document_type is None and not values:
+    # An empty <office:scripts/> is reason enough on its own: see _without_empty_scripts.
+    carries_empty_scripts = _has_empty_scripts(path)
+
+    if document_type is None and not values and not carries_empty_scripts:
         return False
 
     folder = os.path.dirname(os.path.abspath(path))
@@ -109,8 +112,10 @@ def make_document(path, values=None):
                     content = _manifest_says(content, mime_type, document_type)
                 elif entry.filename == META and values:
                     content = _meta_holds(content, values)
-                elif entry.filename == CONTENT and values:
-                    content = _content_holds(content, values)
+                elif entry.filename == CONTENT and (values or carries_empty_scripts):
+                    if values:
+                        content = _content_holds(content, values)
+                    content = _without_empty_scripts(content)
 
                 target.writestr(entry, content)
         shutil.move(temporary, path)
@@ -244,6 +249,36 @@ _PARAGRAPH = re.compile(r'<text:p\b(?P<attributes>[^>]*?)(?:/>|>(?P<inner>.*?)</
 
 #: One span, likewise.
 _SPAN = re.compile(r'<text:span\b(?P<attributes>[^>]*?)(?:/>|>.*?</text:span>)', re.DOTALL)
+
+
+#: An ``office:scripts`` element with nothing in it, in both the shapes a writer emits.
+#: Matched on BYTES, because that is what a zip entry is and what the rewrite passes around.
+_EMPTY_SCRIPTS = re.compile(br"<office:scripts\s*/>|<office:scripts\s*>\s*</office:scripts>")
+
+
+def _has_empty_scripts(path):
+    """Whether the package carries an ``office:scripts`` element with no macros in it."""
+    try:
+        with zipfile.ZipFile(path) as package:
+            return bool(_EMPTY_SCRIPTS.search(package.read(CONTENT)))
+    except Exception:
+        return False
+
+
+def _without_empty_scripts(content):
+    """Drops an ``office:scripts`` element that holds nothing.
+
+    Apache OpenOffice warns "This document contains macros. Macros may contain viruses." on the
+    mere PRESENCE of the element, empty or not, and then says some functionality may not be
+    available. LibreOffice writes the empty element into every document it saves, so a template
+    authored in LibreOffice carries it and so does every document PLM stages from that template -
+    and the user is accused of macros on a file that has none. Measured on Apache OpenOffice
+    4.1.16 against a staged .odt whose only script content was ``<office:scripts/>``.
+
+    Only the EMPTY form is removed. A document with real macros keeps them, and keeps the warning,
+    which is the warning doing its job.
+    """
+    return _EMPTY_SCRIPTS.sub(b"", content)
 
 
 def _content_holds(content, values):

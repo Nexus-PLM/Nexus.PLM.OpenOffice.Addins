@@ -397,3 +397,68 @@ class TheCommandsWriteEveryField(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnEmptyScriptsElementIsDropped(unittest.TestCase):
+    """Apache OpenOffice accuses a document of macros it does not have.
+
+    It warns "This document contains macros. Macros may contain viruses." on the mere PRESENCE of
+    an ``office:scripts`` element — empty or not — and then says some functionality may not be
+    available. LibreOffice writes that empty element into every document it saves, so a template
+    authored there carries it, and so does every document PLM stages from that template. The user
+    is then warned about macros on a file whose entire script content is ``<office:scripts/>``.
+
+    Measured on Apache OpenOffice 4.1.16, against a staged .odt with exactly that and nothing else.
+    """
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp(prefix="nexus-scripts-")
+
+    def staged(self, scripts, name="LTD-1.odt"):
+        path = os.path.join(self.folder, name)
+        body = scripts + '<office:body><office:text/></office:body>'
+        with zipfile.ZipFile(path, "w") as out:
+            stored = zipfile.ZipInfo("mimetype")
+            stored.compress_type = zipfile.ZIP_STORED
+            out.writestr(stored, "application/vnd.oasis.opendocument.text")
+            out.writestr("META-INF/manifest.xml", MANIFEST % "application/vnd.oasis.opendocument.text")
+            out.writestr("meta.xml", META)
+            out.writestr("content.xml",
+                         '<?xml version="1.0" encoding="UTF-8"?>'
+                         '<office:document-content '
+                         'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">'
+                         + body + '</office:document-content>')
+        return path
+
+    def content_of(self, path):
+        with zipfile.ZipFile(path) as package:
+            return package.read("content.xml").decode("utf-8")
+
+    def test_the_self_closing_form_goes(self):
+        path = self.staged("<office:scripts/>")
+        self.assertTrue(odf.make_document(path))
+        self.assertNotIn("office:scripts", self.content_of(path))
+
+    def test_the_open_and_close_form_goes_too(self):
+        path = self.staged("<office:scripts></office:scripts>")
+        self.assertTrue(odf.make_document(path))
+        self.assertNotIn("office:scripts", self.content_of(path))
+
+    def test_it_is_dropped_even_when_there_is_nothing_else_to_do(self):
+        # No values, and already a document rather than a template — the rewrite would otherwise
+        # answer False and leave the warning in place.
+        path = self.staged("<office:scripts/>")
+        self.assertTrue(odf.make_document(path),
+                        "an empty scripts element is reason enough to rewrite")
+
+    def test_real_macros_are_left_alone_and_so_is_the_warning(self):
+        # The warning doing its job. Nothing here may quietly strip somebody's macros.
+        macros = ('<office:scripts><office:script script:language="Basic">'
+                  '<ooo:libraries/></office:script></office:scripts>')
+        path = self.staged(macros)
+        odf.make_document(path, {"PartNumber": "LTD-1"})
+        self.assertIn("office:script", self.content_of(path))
+
+    def test_a_document_with_no_scripts_element_is_not_rewritten_for_nothing(self):
+        path = self.staged("")
+        self.assertFalse(odf.make_document(path))
