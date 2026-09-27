@@ -26,7 +26,7 @@ public class OpenOfficeTemplateConnectorTests
 
     [Fact]
     public void ItAnswersToOneAppKeyForAllFiveApplications()
-        => Connector.AppKey.Should().Be("libreoffice");
+        => Connector.AppKey.Should().Be("openoffice");
 
     /// <summary>
     /// Every application, and — the part the Office add-ins still get wrong — every application's

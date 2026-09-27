@@ -115,24 +115,55 @@ class NoPython3OnlySyntax(unittest.TestCase):
         self.offenders(r"\byield\s+from\b", "`yield from` is Python 3 only")
 
 
-class TheUrllibImportsWorkOnBoth(unittest.TestCase):
-    """`client.py` is the one module that talks HTTP, so it is the one that had to be shimmed."""
+class TheUrllibDifferencesLiveInOnePlace(unittest.TestCase):
+    """`_compat.py` is the only module allowed to know that the two Pythons differ.
+
+    The first attempt at this port shimmed `client.py` alone and missed `document.py`, which
+    imports `urllib.parse` too. Nothing caught it: the tests run on Python 3, where both spellings
+    work, and it surfaced only when OpenOffice tried to register the extension - as
+    `ImportError: No module named parse`, with nothing naming the file. Hence a rule about every
+    shipped file, not about the one that was noticed.
+    """
 
     def setUp(self):
-        self.source = read(os.path.join(SHIPPED, "pythonpath", "nexusplm", "client.py"))
+        self.compat = read(os.path.join(SHIPPED, "pythonpath", "nexusplm", "_compat.py"))
 
-    def test_it_tries_python3_first_then_falls_back(self):
-        self.assertIn("import urllib.request as _urlrequest", self.source)
-        self.assertIn("except ImportError:", self.source)
-        self.assertIn("import urllib2 as _urlrequest", self.source)
+    def test_the_shim_tries_python3_first_then_falls_back(self):
+        self.assertIn("from urllib.request import", self.compat)
+        self.assertIn("except ImportError:", self.compat)
+        self.assertIn("from urllib2 import", self.compat)
 
-    def test_nothing_reaches_for_the_python3_names_directly(self):
-        # A single `urllib.request.urlopen` left behind fails only when the call is made, which is
-        # the first time a user presses a button - not at import, where it would be noticed.
-        code = without_strings_and_comments(self.source)
-        for spelling in ("urllib.request.", "urllib.error.", "urllib.parse."):
-            self.assertNotIn(spelling, code,
-                             "use the shimmed _urlrequest/_urlerror/_urlparse names")
+    def test_it_carries_the_method_python2_would_otherwise_drop(self):
+        # urllib2.Request has no `method`, so a PUT built with one is silently a GET - the service
+        # would see a read and look like it had ignored the write.
+        self.assertIn("def get_method(self)", self.compat)
+        self.assertIn("def make_request(", self.compat)
+
+    def test_it_makes_the_response_usable_with_with(self):
+        # Python 2's urlopen result is not a context manager; `with urlopen(...)` is a TypeError
+        # at the first call rather than at import.
+        self.assertIn("contextlib.closing", self.compat)
+
+    def test_no_other_shipped_file_spells_the_python3_names(self):
+        offenders = []
+        for path in shipped_files():
+            if os.path.basename(path) == "_compat.py":
+                continue
+            code = without_strings_and_comments(read(path))
+            for spelling in ("urllib.request.", "urllib.error.", "urllib.parse.",
+                             "import urllib.request", "import urllib.error", "import urllib.parse"):
+                if spelling in code:
+                    offenders.append("%s: %s" % (os.path.basename(path), spelling))
+        self.assertEqual([], offenders, "go through nexusplm._compat instead")
+
+
+class TheHostSaysWhatItIs(unittest.TestCase):
+    def test_it_calls_itself_openoffice(self):
+        # The host name is declared, not inferred: it names the host in the New dialog's template
+        # chip and in the service's log, and the service keeps no list of hosts. Left as
+        # "LibreOffice" by the copy, every item created here would have claimed the wrong one.
+        source = read(os.path.join(SHIPPED, "pythonpath", "nexusplm", "client.py"))
+        self.assertIn('HOST_NAME = "OpenOffice"', source)
 
 
 class OpenOfficesOwnPythonCanImportIt(unittest.TestCase):
