@@ -82,7 +82,7 @@ def _log(message):
     try:
         _compat.makedirs(os.path.dirname(_LOG))
         with io.open(_LOG, "a", encoding="utf-8") as handle:
-            handle.write("sidebar: " + message.rstrip() + "\n")
+            handle.write(u"sidebar: " + _compat.as_text(message).rstrip() + u"\n")
     except Exception:
         pass
 
