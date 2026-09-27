@@ -22,6 +22,8 @@ Three differences, and the last two are the ones that bite quietly:
   is a TypeError at the moment of the first call, not at import.
 """
 
+import os
+
 try:
     # ── Python 3: what LibreOffice bundles, and what the tests normally run on ───────────────
     from urllib.error import HTTPError, URLError
@@ -75,3 +77,52 @@ def urlopen(request, timeout=None):
     """
     import contextlib
     return contextlib.closing(_urlopen(request, timeout=timeout))
+
+
+def makedirs(path):
+    """``os.makedirs(path, exist_ok=True)``, which 2.7 does not have.
+
+    2.7's makedirs raises OSError when the folder is already there, and its `exist_ok` keyword
+    does not exist at all - so the Python 3 spelling is a TypeError on 2.7. Every call site here
+    sits inside a bare ``except``, which is why the failure was silent: the logs simply stopped
+    being written and the document-to-item map could never be saved.
+    """
+    import errno
+    try:
+        os.makedirs(path)
+    except OSError as error:
+        if error.errno != errno.EEXIST:
+            raise
+
+
+def replace(source, destination):
+    """``os.replace``, which arrived in Python 3.3.
+
+    2.7 has only ``os.rename``, and on Windows that FAILS when the destination already exists -
+    so the very first save works and every later one silently does not, which is the worst shape
+    a bug can have. Removing the destination first is the documented 2.7 workaround; it opens a
+    sliver where neither file is there, which is why the caller keeps the temporary file until
+    this returns.
+    """
+    if hasattr(os, "replace"):
+        os.replace(source, destination)
+        return
+    try:
+        os.remove(destination)
+    except OSError:
+        pass
+    os.rename(source, destination)
+
+
+def write_json(path_or_handle, data, indent=1):
+    """Write JSON as text on both Pythons.
+
+    ``json.dump`` writes ``str`` on 2.7, and a stream opened through ``io.open`` in text mode
+    accepts only unicode - so dumping straight into one is a TypeError. Serialising first and
+    writing the result sidesteps the difference entirely.
+    """
+    import json
+    text = json.dumps(data, indent=indent)
+    if not isinstance(text, type(u"")):
+        text = text.decode("utf-8")
+    path_or_handle.write(text)

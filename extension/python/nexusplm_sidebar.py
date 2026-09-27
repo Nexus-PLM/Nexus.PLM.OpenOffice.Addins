@@ -19,6 +19,7 @@ document's state allows. Every one of those decisions is in ``nexusplm.panel``, 
 office; what is here is the plumbing that cannot be.
 """
 
+import io
 import os
 import traceback
 
@@ -40,6 +41,7 @@ from com.sun.star.awt.tree import XTreeExpansionListener
 #: plain pyuno which both offices have had for ever. Measured on Apache OpenOffice 4.1.16.
 _APPFONT = uno.getConstantByName("com.sun.star.util.MeasureUnit.APPFONT")
 
+from nexusplm import _compat
 from nexusplm import identity
 from nexusplm import navigator as navigator_rules
 from nexusplm import panel as panel_rules
@@ -68,7 +70,7 @@ _POSSIZE = 15
 
 #: The same file every other half of this add-in writes to, so one document's story is in one place.
 _LOG = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"),
-                    "NexusPLM", "Logs", "plmlibreofficeaddin.log")
+                    "NexusPLM", "Logs", "plmopenofficeaddin.log")
 
 
 def _log(message):
@@ -78,8 +80,8 @@ def _log(message):
     could not be written.
     """
     try:
-        os.makedirs(os.path.dirname(_LOG), exist_ok=True)
-        with open(_LOG, "a", encoding="utf-8") as handle:
+        _compat.makedirs(os.path.dirname(_LOG))
+        with io.open(_LOG, "a", encoding="utf-8") as handle:
             handle.write("sidebar: " + message.rstrip() + "\n")
     except Exception:
         pass
