@@ -126,3 +126,22 @@ def write_json(path_or_handle, data, indent=1):
     if not isinstance(text, type(u"")):
         text = text.decode("utf-8")
     path_or_handle.write(text)
+
+
+def as_text(value):
+    """``value`` as the text type, so it can be written to a stream opened by ``io.open``.
+
+    ``io.open`` in text mode accepts ONLY unicode, on both Pythons. On 3 every ``str`` already is;
+    on 2.7 a plain ``str`` is bytes and writing one raises TypeError. Every log line in this
+    add-in went through a bare ``except``, so that TypeError was swallowed and the line simply
+    never appeared.
+
+    What made it baffling rather than obvious: ``"%s" % something_unicode`` produces unicode, and
+    the service's answers arrive as unicode because that is what Python 2's ``json`` returns. So a
+    line built from a service value logged perfectly while a line built from literals - "started",
+    "done", every failure - vanished. The log looked selectively broken, which sent the hunt
+    everywhere except here.
+    """
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return value if isinstance(value, type(u"")) else type(u"")(value)
