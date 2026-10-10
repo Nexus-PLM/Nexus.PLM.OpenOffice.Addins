@@ -6,7 +6,7 @@
   //
   // soffice names its output by the INPUT's basename into --outdir, and the server's script
   // runner creates temp input and expected output with the SAME basename in the process temp
-  // folder - "--outdir ${ENV:TEMP}" lands the file exactly where the runner looks.
+  // folder - "--outdir ${tempdir}" lands the file exactly where the runner looks.
   "translators": [
     {
       "key": "ods_to_xlsx",
@@ -17,7 +17,7 @@
       "outputFileExtension": ".xlsx",
       "inputFileExtension": ".ods",
       "command": "${ENV:LIBREOFFICE_CMD}",
-      "args": ["--headless", "--convert-to", "xlsx", "--outdir", "${ENV:TEMP}", "${input}"]
+      "args": ["--headless", "--convert-to", "xlsx", "--outdir", "${tempdir}", "${input}"]
     },
     {
       "key": "ods_to_pdf",
@@ -28,7 +28,7 @@
       "outputFileExtension": ".pdf",
       "inputFileExtension": ".ods",
       "command": "${ENV:LIBREOFFICE_CMD}",
-      "args": ["--headless", "--convert-to", "pdf", "--outdir", "${ENV:TEMP}", "${input}"]
+      "args": ["--headless", "--convert-to", "pdf", "--outdir", "${tempdir}", "${input}"]
     },
     {
       "key": "odp_to_pdf",
@@ -39,7 +39,7 @@
       "outputFileExtension": ".pdf",
       "inputFileExtension": ".odp",
       "command": "${ENV:LIBREOFFICE_CMD}",
-      "args": ["--headless", "--convert-to", "pdf", "--outdir", "${ENV:TEMP}", "${input}"]
+      "args": ["--headless", "--convert-to", "pdf", "--outdir", "${tempdir}", "${input}"]
     }
   ]
 }

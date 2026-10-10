@@ -15,7 +15,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Nexus.PLM.Addin.Sdk.Translators.Testing" Version="0.1.0" />
+    <PackageReference Include="Nexus.PLM.Addin.Sdk.Translators.Testing" Version="0.1.1" />
   </ItemGroup>
 
   <ItemGroup>
