@@ -77,6 +77,15 @@ server-side to discover what fields a template has; the add-in uses the same rul
 a value written into an open document and the same value written into a closed one are the same
 value.
 
+## Server-side translators
+
+`translators/translators.json` carries this repo's Translation-server deliverable:
+`ods_to_xlsx`, `ods_to_pdf` and `odp_to_pdf`, script-manifest entries over LibreOffice
+headless (Apache OpenOffice has no comparable converter; the formats are the same ODF).
+Ownership is by input format - the LibreOffice repo owns odt-input. Deployed to
+`Nexus\Translators\openoffice\`; a `v*` tag attaches the zip to the GitHub release; keys
+are reserved in `Nexus.PLM.Services/docs/translator-ownership.md`.
+
 ## Installing
 
 Download `NexusPLM.oxt` from a [release](../../releases) and install it:

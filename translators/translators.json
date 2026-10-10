@@ -1,0 +1,45 @@
+{
+  // Apache OpenOffice's example translators. Ownership is by INPUT format: the LibreOffice
+  // repo owns odt-input; the ODF spreadsheet, presentation and drawing-adjacent inputs live
+  // here. The conversions still run through LibreOffice headless on the server (AOO has no
+  // comparable headless convert-to), via the same LIBREOFFICE_CMD the server bridges.
+  //
+  // soffice names its output by the INPUT's basename into --outdir, and the server's script
+  // runner creates temp input and expected output with the SAME basename in the process temp
+  // folder - "--outdir ${ENV:TEMP}" lands the file exactly where the runner looks.
+  "translators": [
+    {
+      "key": "ods_to_xlsx",
+      "label": "Calc → Excel",
+      "description": "Converts an OpenDocument spreadsheet (.ods) to Excel .xlsx via LibreOffice headless.",
+      "inputMimeType": "application/vnd.oasis.opendocument.spreadsheet",
+      "outputMimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "outputFileExtension": ".xlsx",
+      "inputFileExtension": ".ods",
+      "command": "${ENV:LIBREOFFICE_CMD}",
+      "args": ["--headless", "--convert-to", "xlsx", "--outdir", "${ENV:TEMP}", "${input}"]
+    },
+    {
+      "key": "ods_to_pdf",
+      "label": "Calc → PDF",
+      "description": "Converts an OpenDocument spreadsheet (.ods) to PDF via LibreOffice headless.",
+      "inputMimeType": "application/vnd.oasis.opendocument.spreadsheet",
+      "outputMimeType": "application/pdf",
+      "outputFileExtension": ".pdf",
+      "inputFileExtension": ".ods",
+      "command": "${ENV:LIBREOFFICE_CMD}",
+      "args": ["--headless", "--convert-to", "pdf", "--outdir", "${ENV:TEMP}", "${input}"]
+    },
+    {
+      "key": "odp_to_pdf",
+      "label": "Impress → PDF",
+      "description": "Converts an OpenDocument presentation (.odp) to PDF via LibreOffice headless.",
+      "inputMimeType": "application/vnd.oasis.opendocument.presentation",
+      "outputMimeType": "application/pdf",
+      "outputFileExtension": ".pdf",
+      "inputFileExtension": ".odp",
+      "command": "${ENV:LIBREOFFICE_CMD}",
+      "args": ["--headless", "--convert-to", "pdf", "--outdir", "${ENV:TEMP}", "${input}"]
+    }
+  ]
+}

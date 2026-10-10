@@ -12,9 +12,11 @@ name: Build and Test
 on:
   pull_request:
     branches: [ "main", "next" ]
+  push:
+    tags: [ "v*" ]
 
 permissions:
-  contents: read
+  contents: write
   packages: read
 
 env:
@@ -59,6 +61,9 @@ jobs:
     - name: Test
       run: dotnet test Nexus.PLM.OpenOffice.Templates.Tests/Nexus.PLM.OpenOffice.Templates.Tests.csproj --no-build -c Release
 
+    - name: Validate the translator manifest
+      run: dotnet test Nexus.PLM.OpenOffice.Translators.Tests/Nexus.PLM.OpenOffice.Translators.Tests.csproj -c Release
+
     - name: Test the add-in's own Python
       # The UNO-facing code imports no UNO at module scope, so the path conversions it hands to
       # LibreOffice can be checked without an office. Windows-path cases report as skipped here.
@@ -74,3 +79,21 @@ jobs:
       with:
         name: NexusPLM.oxt
         path: dist/NexusPLM.oxt
+
+  # A v* tag attaches the translators deliverable: the manifest alone - no DLLs.
+  release-translators:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Zip the manifest deliverable
+      run: |
+        test -f translators/translators.json
+        ! ls translators/*.dll 2>/dev/null
+        (cd translators && zip -qr ../Nexus.PLM.OpenOffice.Translators.zip .)
+    - name: Attach to the release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release create "${GITHUB_REF_NAME}" --notes "OpenOffice add-in release ${GITHUB_REF_NAME}" || true
+        gh release upload "${GITHUB_REF_NAME}" Nexus.PLM.OpenOffice.Translators.zip --clobber
