@@ -22,7 +22,9 @@ this add-in now does the same.
 """
 
 import io
+import ntpath
 import os
+import posixpath
 import re
 import sys
 import unittest
@@ -124,7 +126,10 @@ class ReleasingTheOpenDocument(unittest.TestCase):
         self.office_holding(held)
 
         doc.release(FakeContext(), self.path.lower())
-        self.assertTrue(held.closed, "the same file spelled differently is the same file")
+        # Case folds only where the filesystem folds it; on POSIX the lower-cased path is
+        # genuinely another file (see ThePathRulesFollowTheOs for both semantics on any host).
+        self.assertEqual(held.closed, os.path.normcase("A") == "a",
+                         "the same file spelled differently is the same file on this OS")
 
     def test_nothing_open_is_not_a_failure(self):
         self.office_holding()
@@ -157,6 +162,45 @@ class ReleasingTheOpenDocument(unittest.TestCase):
         doc.desktop = broken
 
         self.assertFalse(doc.release(FakeContext(), self.path))
+
+
+class ThePathRulesFollowTheOs(unittest.TestCase):
+    """Proves the Windows AND Linux semantics on whichever host runs the suite."""
+
+    def setUp(self):
+        self.real_desktop = doc.desktop
+        self.real_path = os.path
+        doc.desktop = lambda _context: FakeDesktop(self.components)
+        self.components = []
+
+    def tearDown(self):
+        doc.desktop = self.real_desktop
+        os.path = self.real_path
+
+    def release_with(self, flavour, held_path, asked_path):
+        os.path = flavour
+        held = FakeComponent(doc.path_to_url(held_path))
+        self.components = [held]
+        doc.release(FakeContext(), asked_path)
+        return held.closed
+
+    def test_posix_finds_the_held_document_by_its_exact_path(self):
+        self.assertTrue(self.release_with(posixpath, "/srv/staging/LTD-10.odt",
+                                          "/srv/staging/LTD-10.odt"))
+
+    def test_posix_keeps_case_so_a_differently_cased_path_is_another_file(self):
+        self.assertFalse(self.release_with(posixpath, "/srv/staging/LTD-10.odt",
+                                           "/srv/staging/ltd-10.odt"))
+
+    def test_nt_folds_case_so_a_differently_cased_path_is_the_same_file(self):
+        self.assertTrue(self.release_with(ntpath, r"C:\Nexus\Staging\LTD-10.odt",
+                                          "c:/nexus/staging/ltd-10.odt"))
+
+    def test_a_posix_path_round_trips_through_the_file_url(self):
+        os.path = posixpath
+        url = doc.path_to_url("/srv/staging/LTD-10.odt")
+        self.assertEqual(url, "file:///srv/staging/LTD-10.odt")
+        self.assertEqual(doc.url_to_path(url), "/srv/staging/LTD-10.odt")
 
 
 class TheCommandsReleaseBeforeTheFileIsWritten(unittest.TestCase):
