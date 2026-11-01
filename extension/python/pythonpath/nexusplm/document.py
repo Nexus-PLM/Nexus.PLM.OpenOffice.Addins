@@ -69,8 +69,13 @@ def path_to_url(path):
     "type detection failed" — because it never gets as far as looking at the file. Measured against
     LibreOffice 26.2: the same file at ``file:///C:/...`` opens.
     """
-    return "file:///" + _compat.quote(
-        os.path.abspath(path).replace("\\", "/"), safe=":/")
+    absolute = os.path.abspath(path)
+    if os.path.sep == "\\":
+        absolute = absolute.replace("\\", "/")
+    # A POSIX path already starts with "/", so it takes two slashes after "file:"; a Windows drive
+    # path ("C:/...") takes three. Three on POSIX gave "file:////tmp/x", which does not round-trip.
+    prefix = "file://" if absolute.startswith("/") else "file:///"
+    return prefix + _compat.quote(absolute, safe=":/")
 
 
 def is_modified(document):
